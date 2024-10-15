@@ -26,8 +26,8 @@ func QuotaForPodList(pl *v1.PodList) *TotalQuota {
 	tq := TotalQuota{
 		AggregateQuotas: make([]*AggregateQuota, 0),
 	}
-	for _, pod := range pl.Items {
-		tq.AggregateQuotas = append(tq.AggregateQuotas, QuotaForPod(&pod))
+	for idx := range pl.Items {
+		tq.AggregateQuotas = append(tq.AggregateQuotas, QuotaForPod(&pl.Items[idx]))
 	}
 
 	return &tq
