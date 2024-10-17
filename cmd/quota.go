@@ -33,10 +33,7 @@ func quotaRun(cmd *cobra.Command, args []string) {
 	}
 
 	ctx := context.Background()
-	ns, err := cmd.Flags().GetString("namespace")
-	if err != nil {
-		klog.Fatalf("Could not get namespace: %v", err)
-	}
+	ns := getFlagString(cmd, "namespace")
 	quotaName := ""
 	if len(args) > 0 {
 		quotaName = args[0]

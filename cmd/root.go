@@ -47,3 +47,19 @@ func init() {
 	klog.InitFlags(fs)
 	rootCmd.Flags().AddGoFlagSet(fs)
 }
+
+func getFlagString(cmd *cobra.Command, flagName string) string {
+	val, err := cmd.Flags().GetString(flagName)
+	if err != nil {
+		klog.Fatalf("Could not get string flag: %s - %v", flagName, err)
+	}
+	return val
+}
+
+func getFlagBool(cmd *cobra.Command, flagName string) bool {
+	val, err := cmd.Flags().GetBool(flagName)
+	if err != nil {
+		klog.Fatalf("Could not get boolean flag: %s - %v", flagName, err)
+	}
+	return val
+}

@@ -22,28 +22,25 @@ var workloadCmd = &cobra.Command{
 	Run:   workloadRun,
 }
 
-var (
-	addQuota  bool
-	ns        string
-	quotaName string
-)
-
 func init() {
 	rootCmd.AddCommand(workloadCmd)
 
-	workloadCmd.Flags().StringVarP(&ns, "namespace", "n", "", "namespace to search within")
-	workloadCmd.Flags().BoolVarP(&addQuota, "add-quota", "a", false, "add quota to bottom of results")
-	workloadCmd.Flags().StringVarP(&quotaName, "quota-name", "q", "", "specific name of the quota you want to search for (by default "+
-		"it will show a single quota within the requested namespace if there is only one found)")
+	workloadCmd.Flags().StringP("namespace", "n", "", "namespace to search within")
+	workloadCmd.Flags().BoolP("add-quota", "a", false, "add quota to bottom of results")
+	workloadCmd.Flags().StringP("quota-name", "q", "", "specific name of the quota you want to search for (by default it will show a "+
+		"single quota within the requested namespace if there is only one found)")
 }
 
-func workloadRun(_ *cobra.Command, _ []string) {
-	err := workloadValidateInput()
+func workloadRun(cmd *cobra.Command, _ []string) {
+	err := workloadValidateInput(cmd)
 	if err != nil {
 		log.Fatalf("Encountered error while parsing input: %v", err)
 	}
 
 	ctx := context.Background()
+	ns := getFlagString(cmd, "namespace")
+	aq := getFlagBool(cmd, "add-quota")
+	qn := getFlagString(cmd, "quota-name")
 	pl, err := workloads.GetPodsByNamespace(ctx, ns)
 	if err != nil {
 		klog.Fatalf("could not get pods by namespace: %v", err)
@@ -55,9 +52,10 @@ func workloadRun(_ *cobra.Command, _ []string) {
 	tbl.Print()
 }
 
-func workloadValidateInput() error {
-	if ns == "" {
-		return fmt.Errorf("workload command currently requires a namespace be specified")
+func workloadValidateInput(cmd *cobra.Command) error {
+	err := cmd.MarkFlagRequired("namespace")
+	if err != nil {
+		return err
 	}
 
 	return nil
