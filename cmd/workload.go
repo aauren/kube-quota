@@ -5,10 +5,10 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/aauren/kube-quota/pkg/cli"
+	kubequota "github.com/aauren/kube-quota/pkg/kubernetes/quota"
 	"github.com/aauren/kube-quota/pkg/kubernetes/workloads"
 	"github.com/aauren/kube-quota/pkg/quota"
 	"github.com/spf13/cobra"
@@ -47,9 +47,22 @@ func workloadRun(cmd *cobra.Command, _ []string) {
 	}
 
 	tq := quota.QuotaForPodList(pl)
-	tbl := cli.TabularizeTotalQuota(tq)
 
-	tbl.Print()
+	tbl := cli.CreateTableWriter()
+	cli.TabularizeTotalQuota(tbl, tq)
+
+	if aq {
+		kq, err := kubequota.FindByNSAndName(ctx, ns, qn)
+		if err != nil {
+			klog.Fatalf("could not get pods by namespace: %v", err)
+		}
+		q := quota.ForKubeQuota(kq)
+		tbl.ResetHeaders()
+		cli.AddNewSection(tbl, "quota")
+		cli.TabularizeKubeQuota(tbl, q)
+	}
+
+	tbl.Render()
 }
 
 func workloadValidateInput(cmd *cobra.Command) error {

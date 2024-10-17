@@ -45,9 +45,10 @@ func quotaRun(cmd *cobra.Command, args []string) {
 	}
 
 	q := quota.ForKubeQuota(kq)
-	tbl := cli.TabularizeKubeQuota(q)
 
-	tbl.Print()
+	tbl := cli.CreateTableWriter()
+	cli.TabularizeKubeQuota(tbl, q)
+	tbl.Render()
 }
 
 func quotaValidateInput(cmd *cobra.Command) error {

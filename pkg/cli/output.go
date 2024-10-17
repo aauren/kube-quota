@@ -2,38 +2,48 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/aauren/kube-quota/pkg/quota"
-	"github.com/fatih/color"
-	"github.com/rodaine/table"
-)
-
-const (
-	headerForeground = color.FgGreen
-	headerPadding    = 10
-)
-
-var (
-	headerFmt = color.New(headerForeground, color.Underline).SprintfFunc()
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 )
 
 type Byter interface {
 	ToBytes() int64
 }
 
-func TabularizeTotalQuota(tq *quota.TotalQuota) table.Table {
-	tbl := table.New("CPU Request Total", "Mem Request Total", "CPU Limit Total", "Mem Limit Total")
-	tbl.WithHeaderFormatter(headerFmt).WithPadding(headerPadding)
-
-	wq := tq.Sum()
-
-	tbl.AddRow(formatMilliCores(wq.Request.CPU), formatBytes(&wq.Request.Mem), formatMilliCores(wq.Limit.CPU), formatBytes(&wq.Limit.Mem))
-
+func CreateTableWriter() table.Writer {
+	tbl := table.NewWriter()
+	tbl.SetOutputMirror(os.Stdout)
+	tbl.SetStyle(table.StyleColoredBright)
 	return tbl
 }
 
-func TabularizeKubeQuota(kq *quota.KubeQuota) table.Table {
-	headers := make([]interface{}, 0)
+func AddNewSection(tbl table.Writer, sectionName string) {
+	tbl.AppendSeparator()
+	tbl.AppendRow(table.Row{"", strings.ToUpper(sectionName), "", ""})
+	tbl.AppendSeparator()
+	tbl.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, Align: text.AlignCenter, AutoMerge: true},
+		{Number: 2, Align: text.AlignCenter, AutoMerge: true},
+		{Number: 3, Align: text.AlignCenter, AutoMerge: true},
+		{Number: 4, Align: text.AlignCenter, AutoMerge: true},
+	})
+}
+
+func TabularizeTotalQuota(tbl table.Writer, tq *quota.TotalQuota) {
+	tbl.AppendHeader(table.Row{"CPU Request Total", "Mem Request Total", "CPU Limit Total", "Mem Limit Total"})
+
+	wq := tq.Sum()
+
+	tbl.AppendRow([]interface{}{formatMilliCores(wq.Request.CPU), formatBytes(&wq.Request.Mem), formatMilliCores(wq.Limit.CPU),
+		formatBytes(&wq.Limit.Mem)})
+}
+
+func TabularizeKubeQuota(tbl table.Writer, kq *quota.KubeQuota) {
+	headers := make(table.Row, 0)
 	values := make([]interface{}, 0)
 	if kq.HasComputeQuota() {
 		headers = append(headers, "CPU Request Total", "Mem Request Total", "CPU Limit Total", "Mem Limit Total")
@@ -45,12 +55,9 @@ func TabularizeKubeQuota(kq *quota.KubeQuota) table.Table {
 		values = append(values, formatBytes(&kq.Ephemeral.Requests), formatBytes(&kq.Ephemeral.Limits))
 	}
 
-	tbl := table.New(headers...)
-	tbl.WithHeaderFormatter(headerFmt).WithPadding(headerPadding)
+	tbl.AppendHeader(headers)
 
-	tbl.AddRow(values...)
-
-	return tbl
+	tbl.AppendRow(values)
 }
 
 func formatBytes(byter Byter) string {
