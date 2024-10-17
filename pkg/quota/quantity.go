@@ -4,17 +4,28 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const (
 	storageClassSuffix = ".storageclass.storage.k8s.io/"
 )
 
+func asInt64(quantity resource.Quantity) int64 {
+	var by []byte
+	_, suffix := quantity.CanonicalizeBytes(by)
+	if string(suffix) == "" {
+		return quantity.MilliValue()
+	}
+	// klog.Infof("Suffix was: %s", suffix)
+	return quantity.Value()
+}
+
 func ConvertK8sResourceList(rl v1.ResourceList) *ComputeQuota {
 	cQuota := ComputeQuota{}
 
 	cpu := rl[v1.ResourceCPU]
-	cQuota.CPU = CPUMilicore(cpu.Value())
+	cQuota.CPU = CPUMilicore(asInt64(cpu))
 	mem := rl[v1.ResourceMemory]
 	cQuota.Mem = MemBytes(mem.Value())
 
@@ -30,11 +41,11 @@ func ConvertK8sHardToWorkload(rl v1.ResourceList) *WorkloadQuota {
 		//nolint:exhaustive // We don't care to be exhaustive here
 		switch key {
 		case v1.ResourceRequestsCPU, v1.ResourceCPU:
-			wq.Request.CPU = CPUMilicore(val.Value())
+			wq.Request.CPU = CPUMilicore(asInt64(val))
 		case v1.ResourceRequestsMemory, v1.ResourceMemory:
 			wq.Request.Mem = MemBytes(val.Value())
 		case v1.ResourceLimitsCPU:
-			wq.Limit.CPU = CPUMilicore(val.Value())
+			wq.Limit.CPU = CPUMilicore(asInt64(val))
 		case v1.ResourceLimitsMemory:
 			wq.Limit.Mem = MemBytes(val.Value())
 		}
