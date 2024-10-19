@@ -130,7 +130,7 @@ func AddRow(tbl OrderedTableWriter, hv HeaderValuer, prefixes []string) error {
 
 	for i, hdr := range tbl.OrderedHeaders()[len(prefixes):] {
 		var err error
-		notFound := quota.NoValueForHeader{Header: hdr}
+		notFound := quota.NoValueForHeaderError{Header: hdr}
 		values[i+len(prefixes)], err = hv.ValueForHeader(hdr)
 		if err != nil {
 			if errors.Is(err, &notFound) {

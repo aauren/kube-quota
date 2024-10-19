@@ -25,10 +25,11 @@ var workloadCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(workloadCmd)
 
-	workloadCmd.Flags().StringP("namespace", "n", "", "namespace to search within")
 	workloadCmd.Flags().BoolP("add-quota", "a", false, "add quota to bottom of results")
+	workloadCmd.Flags().StringP("namespace", "n", "", "namespace to search within")
 	workloadCmd.Flags().StringP("quota-name", "q", "", "specific name of the quota you want to search for (by default it will show a "+
 		"single quota within the requested namespace if there is only one found)")
+	workloadCmd.Flags().BoolP("show-usage", "u", false, "show the usage against the current quota (enables add-quota as well)")
 }
 
 func workloadRun(cmd *cobra.Command, _ []string) {
@@ -42,14 +43,15 @@ func workloadRun(cmd *cobra.Command, _ []string) {
 	ns := getFlagString(cmd, "namespace")
 	aq := getFlagBool(cmd, "add-quota")
 	qn := getFlagString(cmd, "quota-name")
+	us := getFlagBool(cmd, "show-usage")
 
 	// Get all of our data and format it.
 	pl, err := workloads.GetPodsByNamespace(ctx, ns)
 	if err != nil {
 		klog.Fatalf("could not get pods by namespace: %v", err)
 	}
-	tq := quota.QuotaForPodList(pl)
-	wq := tq.Sum()
+	nq := quota.QuotaForPodList(pl)
+	wq := nq.Sum()
 
 	var q *quota.KubeQuota
 	if aq {
@@ -62,7 +64,7 @@ func workloadRun(cmd *cobra.Command, _ []string) {
 
 	// Setup our table and add our header.
 	tbl := cli.CreateTableWriter()
-	if aq {
+	if aq || us {
 		cli.AddTableHeader(tbl, []string{"Name"}, q, wq)
 	} else {
 		cli.AddTableHeader(tbl, []string{"Name"}, wq)
@@ -71,12 +73,22 @@ func workloadRun(cmd *cobra.Command, _ []string) {
 	// Add our data to the table.
 	err = cli.AddRow(tbl, wq, []string{"Total"})
 	if err != nil {
-		klog.Fatalf("Could not add row to table: %v", err)
+		klog.Fatalf("Could not add data row to table: %v", err)
 	}
-	if aq {
+	if aq || us {
 		err = cli.AddRow(tbl, q, []string{"Quota"})
 		if err != nil {
-			klog.Fatalf("Could not add row to table: %v", err)
+			klog.Fatalf("Could not add quota row to table: %v", err)
+		}
+	}
+	if us {
+		qu := quota.QuotaUsage{
+			KQ:  q,
+			NWQ: nq,
+		}
+		err = cli.AddRow(tbl, &qu, []string{"Usage"})
+		if err != nil {
+			klog.Fatalf("Could not add usage row to table: %v", err)
 		}
 	}
 

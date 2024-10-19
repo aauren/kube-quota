@@ -16,11 +16,11 @@ const (
 	HeaderMemLim              = "Mem Limit"
 )
 
-type NoValueForHeader struct {
+type NoValueForHeaderError struct {
 	Header string
 }
 
-func (n *NoValueForHeader) Error() string {
+func (n *NoValueForHeaderError) Error() string {
 	return fmt.Sprintf("No value for header '%s' was found", n.Header)
 }
 
@@ -30,7 +30,7 @@ type ComputeQuota struct {
 }
 
 type StorageQuota struct {
-	StorageClasses []*StorageClassQuota
+	StorageClasses map[string]*StorageClassQuota
 	Ephemeral      *EphemeralQuota
 }
 
@@ -69,13 +69,27 @@ func (e *EphemeralQuota) ValueForHeader(hdr string) (unit.UnitWriter, error) {
 		return unit.NewUnitWriter(e.Limits, unit.Bytes)
 	}
 
-	return nil, &NoValueForHeader{Header: hdr}
+	return nil, &NoValueForHeaderError{Header: hdr}
 }
 
+func (e *EphemeralQuota) ComparativeUsage(hdr string, totalQuota *EphemeralQuota) (*kubequota.Percentage, error) {
+	switch hdr {
+	case HeaderEphemeralStorageReq:
+		return &kubequota.Percentage{Parts: int64(e.Requests), Whole: int64(totalQuota.Requests)}, nil
+	case HeaderEphemeralStorageLim:
+		return &kubequota.Percentage{Parts: int64(e.Limits), Whole: int64(totalQuota.Limits)}, nil
+	}
+
+	return nil, &NoValueForHeaderError{Header: hdr}
+}
+
+// WorkloadQuota used to represent the quota reserved by a single workload. Most commonly this represents a container, but it can also be
+// used to aggregate workloads when the discrete workloads are no longer needed and only the totals are important
 type WorkloadQuota struct {
-	Name    string
-	Request *ComputeQuota
-	Limit   *ComputeQuota
+	Name         string
+	Request      *ComputeQuota
+	Limit        *ComputeQuota
+	StorageQuota *StorageQuota
 }
 
 func (w *WorkloadQuota) TableHeader() []string {
@@ -101,17 +115,50 @@ func (w *WorkloadQuota) ValueForHeader(hdr string) (unit.UnitWriter, error) {
 		return unit.NewUnitWriter(w.Limit.Mem, unit.Bytes)
 	}
 
-	return nil, &NoValueForHeader{Header: hdr}
+	return nil, &NoValueForHeaderError{Header: hdr}
 }
 
-type AggregateQuota struct {
+func (w *WorkloadQuota) ComparativeUsage(hdr string, totalQuota *WorkloadQuota) (*kubequota.Percentage, error) {
+	switch hdr {
+	case HeaderCPUReq:
+		return &kubequota.Percentage{Parts: int64(w.Request.CPU), Whole: int64(totalQuota.Request.CPU)}, nil
+	case HeaderMemReq:
+		return &kubequota.Percentage{Parts: int64(w.Request.Mem), Whole: int64(totalQuota.Request.Mem)}, nil
+	case HeaderCPULim:
+		return &kubequota.Percentage{Parts: int64(w.Limit.CPU), Whole: int64(totalQuota.Limit.CPU)}, nil
+	case HeaderMemLim:
+		return &kubequota.Percentage{Parts: int64(w.Limit.Mem), Whole: int64(totalQuota.Limit.Mem)}, nil
+	}
+
+	return nil, &NoValueForHeaderError{Header: hdr}
+}
+
+func (w *WorkloadQuota) ComparativeUsageAsWriter(hdr string, totalQuota *WorkloadQuota) (unit.UnitWriter, error) {
+	p, err := w.ComparativeUsage(hdr, totalQuota)
+	if err != nil {
+		return nil, err
+	}
+
+	switch hdr {
+	case HeaderCPUReq, HeaderCPULim:
+		return unit.NewUnitWriter(p, unit.PercentCores)
+	case HeaderMemReq, HeaderMemLim:
+		return unit.NewUnitWriter(p, unit.PercentBytes)
+	}
+
+	return nil, &NoValueForHeaderError{Header: hdr}
+}
+
+type PodQuota struct {
 	Name           string
 	Namespace      string
 	WorkloadQuotas []*WorkloadQuota
 }
 
-type TotalQuota struct {
-	AggregateQuotas []*AggregateQuota
+type NamespaceWorkloadQuota struct {
+	Name      string
+	Namespace string
+	PodQuotas []*PodQuota
 }
 
 type KubeQuota struct {
@@ -127,7 +174,7 @@ func (k *KubeQuota) ValueForHeader(hdr string) (unit.UnitWriter, error) {
 		return k.SQ.Ephemeral.ValueForHeader(hdr)
 	}
 
-	return nil, &NoValueForHeader{Header: hdr}
+	return nil, &NoValueForHeaderError{Header: hdr}
 }
 
 func (k *KubeQuota) HasEphemeralQuota() bool {
@@ -151,4 +198,25 @@ func (k *KubeQuota) TableHeader() []string {
 		header = append(header, k.SQ.TableHeader()...)
 	}
 	return header
+}
+
+type QuotaUsage struct {
+	KQ  *KubeQuota
+	NWQ *NamespaceWorkloadQuota
+}
+
+func (qu *QuotaUsage) ValueForHeader(hdr string) (unit.UnitWriter, error) {
+	wq := qu.NWQ.Sum()
+	switch hdr {
+	case HeaderCPUReq, HeaderMemReq, HeaderCPULim, HeaderMemLim:
+		return wq.ComparativeUsageAsWriter(hdr, qu.KQ.WQ)
+	case HeaderEphemeralStorageReq, HeaderEphemeralStorageLim:
+		p, err := wq.StorageQuota.Ephemeral.ComparativeUsage(hdr, qu.KQ.SQ.Ephemeral)
+		if err != nil {
+			return nil, err
+		}
+		return unit.NewUnitWriter(p, unit.PercentBytes)
+	}
+
+	return nil, &NoValueForHeaderError{Header: hdr}
 }

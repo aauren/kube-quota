@@ -11,10 +11,12 @@ type FormatUnit int
 const (
 	Bytes = iota
 	Cores
+	PercentBytes
+	PercentCores
 )
 
 var (
-	AllFormatters = []FormatUnit{Bytes, Cores}
+	AllFormatters = []FormatUnit{Bytes, Cores, PercentBytes, PercentCores}
 )
 
 type Byter interface {
@@ -22,9 +24,10 @@ type Byter interface {
 }
 
 type Unit struct {
-	bytes Byter
-	unit  FormatUnit
-	cores kubequota.CPUMilicore
+	bytes      Byter
+	unit       FormatUnit
+	cores      kubequota.CPUMilicore
+	percentage kubequota.Percentage
 }
 
 type UnitWriter interface {
@@ -37,6 +40,20 @@ func (u *Unit) String() string {
 		return formatBytes(u.bytes)
 	case Cores:
 		return formatMilliCores(u.cores)
+	case PercentBytes:
+		mb := kubequota.MemBytes(u.percentage.Parts)
+		p, err := u.percentage.Percentage()
+		if err != nil {
+			return "NaN"
+		}
+		return fmt.Sprintf("%s (%.2f%%)", formatBytes(&mb), p)
+	case PercentCores:
+		c := kubequota.CPUMilicore(u.percentage.Parts)
+		p, err := u.percentage.Percentage()
+		if err != nil {
+			return "NaN"
+		}
+		return fmt.Sprintf("%s (%.2f%%)", formatMilliCores(c), p)
 	}
 
 	return ""
@@ -59,6 +76,13 @@ func NewUnitWriter(value interface{}, unit FormatUnit) (UnitWriter, error) {
 			return &Unit{cores: c, unit: unit}, nil
 		default:
 			return nil, fmt.Errorf("unable to cast %v to a valid core type, cannot continue", value)
+		}
+	case PercentBytes, PercentCores:
+		switch pb := value.(type) {
+		case *kubequota.Percentage:
+			return &Unit{percentage: *pb, unit: unit}, nil
+		default:
+			return nil, fmt.Errorf("unable to cast %v to a valid percentage type, cannot continue", value)
 		}
 	}
 
