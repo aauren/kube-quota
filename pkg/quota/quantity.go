@@ -3,6 +3,7 @@ package quota
 import (
 	"strings"
 
+	kubequota "github.com/aauren/kube-quota/pkg"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -25,9 +26,9 @@ func ConvertK8sResourceList(rl v1.ResourceList) *ComputeQuota {
 	cQuota := ComputeQuota{}
 
 	cpu := rl[v1.ResourceCPU]
-	cQuota.CPU = CPUMilicore(asInt64(cpu))
+	cQuota.CPU = kubequota.CPUMilicore(asInt64(cpu))
 	mem := rl[v1.ResourceMemory]
-	cQuota.Mem = MemBytes(mem.Value())
+	cQuota.Mem = kubequota.MemBytes(mem.Value())
 
 	return &cQuota
 }
@@ -41,13 +42,13 @@ func ConvertK8sHardToWorkload(rl v1.ResourceList) *WorkloadQuota {
 		//nolint:exhaustive // We don't care to be exhaustive here
 		switch key {
 		case v1.ResourceRequestsCPU, v1.ResourceCPU:
-			wq.Request.CPU = CPUMilicore(asInt64(val))
+			wq.Request.CPU = kubequota.CPUMilicore(asInt64(val))
 		case v1.ResourceRequestsMemory, v1.ResourceMemory:
-			wq.Request.Mem = MemBytes(val.Value())
+			wq.Request.Mem = kubequota.MemBytes(val.Value())
 		case v1.ResourceLimitsCPU:
-			wq.Limit.CPU = CPUMilicore(asInt64(val))
+			wq.Limit.CPU = kubequota.CPUMilicore(asInt64(val))
 		case v1.ResourceLimitsMemory:
-			wq.Limit.Mem = MemBytes(val.Value())
+			wq.Limit.Mem = kubequota.MemBytes(val.Value())
 		}
 	}
 
@@ -63,13 +64,13 @@ func ConvertK8sHardToStorage(rl v1.ResourceList) *StorageQuota {
 			if sq.Ephemeral == nil {
 				sq.Ephemeral = &EphemeralQuota{}
 			}
-			sq.Ephemeral.Requests = StorageBytes(val.Value())
+			sq.Ephemeral.Requests = kubequota.StorageBytes(val.Value())
 			continue
 		case v1.ResourceLimitsEphemeralStorage:
 			if sq.Ephemeral == nil {
 				sq.Ephemeral = &EphemeralQuota{}
 			}
-			sq.Ephemeral.Limits = StorageBytes(val.Value())
+			sq.Ephemeral.Limits = kubequota.StorageBytes(val.Value())
 			continue
 		}
 

@@ -37,31 +37,50 @@ func workloadRun(cmd *cobra.Command, _ []string) {
 		log.Fatalf("Encountered error while parsing input: %v", err)
 	}
 
+	// Create our context and get any arguments the user may have set
 	ctx := context.Background()
 	ns := getFlagString(cmd, "namespace")
 	aq := getFlagBool(cmd, "add-quota")
 	qn := getFlagString(cmd, "quota-name")
+
+	// Get all of our data and format it.
 	pl, err := workloads.GetPodsByNamespace(ctx, ns)
 	if err != nil {
 		klog.Fatalf("could not get pods by namespace: %v", err)
 	}
-
 	tq := quota.QuotaForPodList(pl)
+	wq := tq.Sum()
 
-	tbl := cli.CreateTableWriter()
-	cli.TabularizeTotalQuota(tbl, tq)
-
+	var q *quota.KubeQuota
 	if aq {
 		kq, err := kubequota.FindByNSAndName(ctx, ns, qn)
 		if err != nil {
 			klog.Fatalf("could not get pods by namespace: %v", err)
 		}
-		q := quota.ForKubeQuota(kq)
-		tbl.ResetHeaders()
-		cli.AddNewSection(tbl, "quota")
-		cli.TabularizeKubeQuota(tbl, q)
+		q = quota.ForKubeQuota(kq)
 	}
 
+	// Setup our table and add our header.
+	tbl := cli.CreateTableWriter()
+	if aq {
+		cli.AddTableHeader(tbl, []string{"Name"}, q, wq)
+	} else {
+		cli.AddTableHeader(tbl, []string{"Name"}, wq)
+	}
+
+	// Add our data to the table.
+	err = cli.AddRow(tbl, wq, []string{"Total"})
+	if err != nil {
+		klog.Fatalf("Could not add row to table: %v", err)
+	}
+	if aq {
+		err = cli.AddRow(tbl, q, []string{"Quota"})
+		if err != nil {
+			klog.Fatalf("Could not add row to table: %v", err)
+		}
+	}
+
+	// Render our table
 	tbl.Render()
 }
 
